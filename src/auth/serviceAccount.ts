@@ -47,6 +47,15 @@ export class ServiceAccountProvider implements AuthProvider {
     }
   }
 
+  async checkSetup(): Promise<string | undefined> {
+    try {
+      this.loadKey();
+      return undefined;
+    } catch (err) {
+      return (err as Error).message;
+    }
+  }
+
   invalidate(): void {
     this.client = undefined;
   }

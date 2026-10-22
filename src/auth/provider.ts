@@ -28,6 +28,12 @@ export interface AuthProvider {
   /** The account email we act as, when known. Never throws. */
   getUserEmail(): Promise<string | undefined>;
   status(): Promise<AuthStatus>;
+  /**
+   * Offline startup check (never calls Google): a description of what is missing,
+   * or undefined when the credentials look usable. Surfaces setup problems in
+   * deploy logs before the first tool call.
+   */
+  checkSetup(): Promise<string | undefined>;
   /** Forget cached credentials so the next call reloads them (e.g. after a revoked token). */
   invalidate(): void;
 }

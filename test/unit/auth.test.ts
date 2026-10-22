@@ -126,3 +126,63 @@ describe("runOAuthFlow (loopback + PKCE)", () => {
     await expect(flow).rejects.toThrow(/invalid state/);
   });
 });
+
+describe("startup credential check (checkSetup)", () => {
+  const clientEnv = { GOOGLE_CLIENT_ID: "id.apps.googleusercontent.com", GOOGLE_CLIENT_SECRET: "s" };
+  const provider = (file: string, env: Record<string, string> = clientEnv) =>
+    new OAuthProvider(makeConfig({ ...env, GOOGLE_TOKEN_PATH: file }), new TokenStore(file), silentLogger);
+
+  it("reports missing client credentials", async () => {
+    expect(await provider(path.join(tmp(), "t.json"), {}).checkSetup()).toMatch(/GOOGLE_CLIENT_ID/);
+  });
+
+  it("reports a missing token file with deployment guidance", async () => {
+    const file = path.join(tmp(), "t.json");
+    const problem = await provider(file).checkSetup();
+    expect(problem).toContain(file);
+    expect(problem).toContain("secret file");
+  });
+
+  it("reports a token without a refresh token", async () => {
+    const file = path.join(tmp(), "t.json");
+    writeFileSync(file, JSON.stringify({ access_token: "a" }));
+    expect(await provider(file).checkSetup()).toMatch(/no refresh token/);
+  });
+
+  it("passes with a usable token file, without calling Google", async () => {
+    const file = path.join(tmp(), "t.json");
+    writeFileSync(file, JSON.stringify({ refresh_token: "r", access_token: "a" }));
+    expect(await provider(file).checkSetup()).toBeUndefined();
+  });
+
+  it("service-account mode reports an unreadable key", async () => {
+    const sa = new ServiceAccountProvider(makeConfig({ GOOGLE_SERVICE_ACCOUNT_KEY_PATH: "/nonexistent/sa.json" }), silentLogger);
+    expect(await sa.checkSetup()).toMatch(/service-account key/);
+  });
+});
+
+describe.skipIf(process.platform === "win32")("read-only token file (e.g. Render secret files)", () => {
+  it("keeps refreshed tokens in memory and warns only once", async () => {
+    const dir = tmp();
+    const file = path.join(dir, "token.json");
+    writeFileSync(file, JSON.stringify({ refresh_token: "r", access_token: "a", expiry_date: Date.now() + 3600_000 }));
+    chmodSync(file, 0o444);
+    chmodSync(dir, 0o555);
+    const warnings: string[] = [];
+    const logger = { ...silentLogger, warn: (msg: string) => void warnings.push(msg) };
+    const config = makeConfig({ GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "s", GOOGLE_TOKEN_PATH: file });
+    const provider = new OAuthProvider(config, new TokenStore(file), logger);
+    try {
+      const client = await provider.getClient("docs");
+      client.emit("tokens", { access_token: "fresh-1", expiry_date: Date.now() + 3600_000 });
+      client.emit("tokens", { access_token: "fresh-2", expiry_date: Date.now() + 3600_000 });
+      await vi.waitFor(() => expect(warnings).toHaveLength(1));
+      await new Promise((r) => setTimeout(r, 50)); // give the second save time to fail too
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toMatch(/read-only/);
+      expect(await provider.getClient("docs")).toBe(client); // still usable, no reload
+    } finally {
+      chmodSync(dir, 0o755);
+    }
+  });
+});

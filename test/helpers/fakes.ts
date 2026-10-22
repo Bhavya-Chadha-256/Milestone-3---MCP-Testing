@@ -27,6 +27,9 @@ export class FakeAuth implements AuthProvider {
   async status() {
     return this.statusValue;
   }
+  async checkSetup() {
+    return undefined;
+  }
   invalidate() {}
 }
 

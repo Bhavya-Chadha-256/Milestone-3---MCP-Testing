@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import dotenv from "dotenv";
 import { runOAuthFlow } from "./auth/oauth.js";
+import type { AuthProvider } from "./auth/provider.js";
 import { ConfigError, loadConfig, parseCliArgs, type CliArgs, type Config } from "./config.js";
 import { createLogger, type Logger } from "./logger.js";
 import { SERVER_NAME, SERVER_VERSION, createDefaultDeps } from "./server.js";
@@ -36,9 +37,17 @@ async function runAuth(config: Config, cli: CliArgs) {
   await runOAuthFlow(config, { openBrowser: !cli.noBrowser });
 }
 
+/** Startup log line saying whether Google credentials look usable (offline check). */
+async function reportCredentialSetup(auth: AuthProvider, logger: Logger) {
+  const problem = await auth.checkSetup();
+  if (problem) logger.warn("google credentials not ready; tools will return AUTH_REQUIRED", { problem });
+  else logger.info("google credentials found", { auth_mode: auth.mode });
+}
+
 async function serve(config: Config, logger: Logger) {
   const deps = createDefaultDeps(config, logger);
   const running = config.transport === "http" ? await startHttp(deps) : await startStdio(deps);
+  await reportCredentialSetup(deps.auth, logger);
 
   let stopping = false;
   const shutdown = (signal: string) => {

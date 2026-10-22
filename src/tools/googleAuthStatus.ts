@@ -21,7 +21,9 @@ export async function handleGoogleAuthStatus(deps: ToolDeps) {
     log.authorized = status.authorized;
     const text = status.authorized
       ? `Authorized with Google${status.email ? ` as ${status.email}` : ""} (${status.auth_mode}). Scopes: ${status.scopes.join(", ")}.${status.token_expires_at ? ` Access token expires ${status.token_expires_at} and refreshes automatically.` : ""}${status.warning ? ` Warning: ${status.warning}` : ""}`
-      : `Not authorized with Google. ${status.instructions ?? ""}`.trim();
+      : status.instructions?.startsWith("Not authorized")
+        ? status.instructions
+        : `Not authorized with Google. ${status.instructions ?? ""}`.trim();
     return { result: successResult(text, { ...status }) };
   });
 }

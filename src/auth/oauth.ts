@@ -30,7 +30,7 @@ const NOT_CONFIGURED =
   AUTH_COMMAND +
   "`.";
 
-const NOT_AUTHORIZED = `Not authorized with Google. Run \`${AUTH_COMMAND}\` in a terminal (with the same GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_TOKEN_PATH as this server), then retry.`;
+const NOT_AUTHORIZED = `Not authorized with Google. Run \`${AUTH_COMMAND}\` in a terminal (with the same GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_TOKEN_PATH as this server), then retry. For a deployed server (e.g. Render), run it on your own machine and upload the resulting token.json to the server's GOOGLE_TOKEN_PATH.`;
 
 /** OAuth 2.0 user-credential mode: tokens from the loopback flow, refreshed automatically. */
 export class OAuthProvider implements AuthProvider {
@@ -38,6 +38,7 @@ export class OAuthProvider implements AuthProvider {
   private client?: OAuth2Client;
   private token?: StoredToken;
   private loadedMtime?: number;
+  private persistFailureLogged = false;
 
   constructor(
     private readonly config: Config,
@@ -70,6 +71,24 @@ export class OAuthProvider implements AuthProvider {
     this.token = token;
     this.loadedMtime = mtime;
     return client;
+  }
+
+  async checkSetup(): Promise<string | undefined> {
+    const { clientId, clientSecret, tokenPath } = this.config.google;
+    if (!clientId || !clientSecret) return NOT_CONFIGURED;
+    let token: StoredToken | undefined;
+    try {
+      token = await this.store.load();
+    } catch (err) {
+      return `Cannot read the Google token file at ${tokenPath} (${(err as NodeJS.ErrnoException).code ?? "error"}). Check the path and file permissions.`;
+    }
+    if (!token) {
+      return `No Google token file at ${tokenPath}. Run \`${AUTH_COMMAND}\` on a machine with a browser; for a deployed server (e.g. Render), upload the resulting token.json as a secret file at this path.`;
+    }
+    if (!token.refresh_token) {
+      return `The token file at ${tokenPath} has no refresh token, so access will stop when the current access token expires. Re-run \`${AUTH_COMMAND}\`.`;
+    }
+    return undefined;
   }
 
   async getUserEmail(): Promise<string | undefined> {
@@ -152,7 +171,18 @@ export class OAuthProvider implements AuthProvider {
       this.loadedMtime = await this.store.mtime();
       this.logger.debug("persisted refreshed Google access token");
     } catch (err) {
-      this.logger.warn("could not persist refreshed token", { error: err });
+      // Expected on read-only mounts such as Render secret files: the refreshed
+      // access token lives in memory and the stored refresh token keeps working.
+      // Explain once, then stay quiet.
+      if (this.persistFailureLogged) {
+        this.logger.debug("could not persist refreshed token", { error: err });
+        return;
+      }
+      this.persistFailureLogged = true;
+      this.logger.warn(
+        "could not persist refreshed token; keeping it in memory (expected when the token file is read-only, e.g. a Render secret file)",
+        { error: err },
+      );
     }
   }
 }

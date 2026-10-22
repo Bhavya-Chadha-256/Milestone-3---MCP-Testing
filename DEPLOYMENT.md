@@ -2,7 +2,7 @@
 
 A plan for running the server in **Streamable HTTP** mode as a Render Web Service, so MCP clients on other machines can reach it at `https://<name>.onrender.com/mcp`.
 
-Status: **in progress**: repository prepared; Render service not yet created. The build and runtime steps below were tested locally under Render-like conditions on 2026-10-22 (see [Pre-deployment test results](#pre-deployment-test-results)). Render's UI labels, plans and prices change over time, so check them against the [Render docs](https://render.com/docs) as you go.
+Status: **in progress**: code and Blueprint pushed to GitHub (`main`); Render service not yet created. The build and runtime steps below were tested locally under Render-like conditions on 2026-10-22 (see [Pre-deployment test results](#pre-deployment-test-results)). Render's UI labels, plans and prices change over time, so check them against the [Render docs](https://render.com/docs) as you go.
 
 ---
 
@@ -84,7 +84,10 @@ services:
         value: info
 ```
 
-No application code changes are needed. Render supplies `PORT`, which the server already reads.
+Both files are in the repository. Render supplies `PORT`, which the server already reads. Two small server changes make Render operations clearer:
+
+- **Startup credential check.** Right after `server started`, the log says either `google credentials found` or `google credentials not ready …` with the exact problem (e.g. the secret file is missing), without calling Google.
+- **Read-only token file.** When a refreshed access token can't be written back (as with Render secret files), the server keeps it in memory and logs one explanatory warning, not one per refresh.
 
 ---
 
@@ -120,7 +123,7 @@ Do **not** set `MCP_ALLOW_UNAUTHENTICATED`. It's rejected on `0.0.0.0` anyway.
 
 *Environment → Secret Files → Add*. Filename `token.json`; contents are the whole of `~/.config/gmail-gdocs-mcp/token.json` from your Mac (`pbcopy < ~/.config/gmail-gdocs-mcp/token.json`). Render mounts it at `/etc/secrets/token.json`.
 
-The mount is read-only. That's fine (tested): the server refreshes the access token in memory and logs one `could not persist refreshed token` warning, which is expected there. The refresh token in the file keeps working until it's revoked or, while the app is in Testing, until it expires after 7 days.
+The mount is read-only. That's fine (tested): the server refreshes the access token in memory and logs a single `could not persist refreshed token; keeping it in memory …` warning, which is expected there. The refresh token in the file keeps working until it's revoked or, while the app is in Testing, until it expires after 7 days.
 
 > [!WARNING]
 > The token file grants send-as-you access. Anyone with access to this Render service's dashboard can read it. Keep the Render account to yourself and turn on 2FA.
@@ -131,7 +134,7 @@ The mount is read-only. That's fine (tested): the server refreshes the access to
 
 1. Push the repo (with `render.yaml`) and create the Blueprint, or the Web Service by hand.
 2. Add the secret file and the `sync: false` variables, then deploy.
-3. Watch the deploy logs for `"msg":"server started","transport":"http","url":"http://0.0.0.0:10000/mcp","authenticated":true`.
+3. Watch the deploy logs for `"msg":"server started",…,"authenticated":true` followed by `"msg":"google credentials found"`. If you see `google credentials not ready` instead, its `problem` field says what to fix (usually the secret file name or path).
 4. Smoke test from your Mac (replace `<name>` and `<token>`):
    ```bash
    URL=https://<name>.onrender.com
@@ -201,7 +204,8 @@ Run locally on 2026-10-22 against a clean copy of the repo, simulating Render:
 | Server on `HOST=0.0.0.0 PORT=10000`, credentials from env vars only (no `.env`) | Starts; `/healthz` ok |
 | No bearer token / wrong token | HTTP 401 / 401 |
 | `Host: gmail-gdocs-mcp.onrender.com` header with a valid token | Accepted |
-| Read-only, expired token file (like `/etc/secrets`) | Token refreshed in memory; `google_auth_status` authorized; one "could not persist" warning; no crash |
+| Read-only, expired token file (like `/etc/secrets`) | Token refreshed in memory; `google_auth_status` authorized; exactly one "could not persist" warning across several calls; no crash |
+| Secret file missing | Startup log: `google credentials not ready` naming `/etc/secrets/token.json`; tools return `AUTH_REQUIRED` with upload guidance |
 | `ALLOWED_RECIPIENT_DOMAINS=gmail.com`, recipient `@example.org` | `POLICY_BLOCKED`, nothing sent |
 | Email and Docs dry runs against the real Google APIs | Pass |
 
