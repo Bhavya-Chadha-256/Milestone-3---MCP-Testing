@@ -1,6 +1,8 @@
 node_modules/
 dist/
-.env
-token.json
 *.log
-.env.render
+# Local secrets: never commit. Only the placeholder template is tracked.
+.env
+.env.*
+!.env.example
+token.json

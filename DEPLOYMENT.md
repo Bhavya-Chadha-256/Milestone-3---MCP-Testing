@@ -2,7 +2,18 @@
 
 A plan for running the server in **Streamable HTTP** mode as a Render Web Service, so MCP clients on other machines can reach it at `https://<name>.onrender.com/mcp`.
 
-Status: **in progress**: code and Blueprint pushed to GitHub (`main`); Render service not yet created. The build and runtime steps below were tested locally under Render-like conditions on 2026-10-22 (see [Pre-deployment test results](#pre-deployment-test-results)). Render's UI labels, plans and prices change over time, so check them against the [Render docs](https://render.com/docs) as you go.
+## Current status (2026-10-22)
+
+| Step | State |
+|------|-------|
+| Code, `render.yaml`, `.node-version` pushed to GitHub (`main`) | ✅ done |
+| Render Web Service created by hand, **Free** instance | ✅ done (by the owner, in the Render dashboard) |
+| Environment variables pasted in bulk from the local `.env.render` | ✅ done |
+| `token.json` secret file added | ✅ done |
+| Deploy verified from outside (section 5, steps 3–6) | ⏳ **not yet**: the service URL hasn't been recorded here. Next action: open the Render *Logs* tab, confirm `google credentials found`, then run the section 5 smoke test against `https://<name>.onrender.com`. |
+| Google OAuth app | Still in **Testing**: the token expires about 7 days after each `npm run auth` (last run 2026-10-22). See the Runbook. |
+
+The build and runtime steps below were tested locally under Render-like conditions on 2026-10-22 (see [Pre-deployment test results](#pre-deployment-test-results)). Render's UI labels, plans and prices change over time, so check them against the [Render docs](https://render.com/docs) as you go.
 
 ---
 
@@ -93,7 +104,7 @@ Both files are in the repository. Render supplies `PORT`, which the server alrea
 
 ## 4. Render service configuration
 
-If you're not using the Blueprint, create it by hand: **New → Web Service → connect the repo**.
+If you're not using the Blueprint, create it by hand: **New → Web Service → connect the repo**. This is the path that was actually used. Render's own default build command must be replaced with the one below.
 
 | Setting | Value | Notes |
 |---------|-------|-------|
@@ -117,7 +128,26 @@ If you're not using the Blueprint, create it by hand: **New → Web Service → 
 | `ALLOWED_DOCUMENT_IDS` | your doc IDs | optional hardening |
 | `REQUIRE_DRY_RUN_FIRST` | `true` | optional hardening |
 
-Do **not** set `MCP_ALLOW_UNAUTHENTICATED`. It's rejected on `0.0.0.0` anyway.
+Do **not** set `MCP_ALLOW_UNAUTHENTICATED` (it's rejected on `0.0.0.0` anyway), and don't set `PORT` (Render provides it). `MCP_TRANSPORT` and `HOST` can instead go in the start command: `node dist/index.js --transport http --host 0.0.0.0`.
+
+#### Entering them in bulk: `.env.render`
+
+Render's *Environment* page has **Add from .env**, which accepts pasted `KEY=value` lines. Keep the Render values in a separate local file, `.env.render`:
+
+```
+MCP_TRANSPORT=http
+HOST=0.0.0.0
+MCP_AUTH_TOKEN=<openssl rand -hex 32>
+GOOGLE_CLIENT_ID=<same as .env>
+GOOGLE_CLIENT_SECRET=<same as .env>
+GOOGLE_TOKEN_PATH=/etc/secrets/token.json
+ALLOWED_RECIPIENT_DOMAINS=gmail.com
+RATE_LIMIT_EMAILS_PER_HOUR=10
+LOG_LEVEL=info
+```
+
+- `.env.render` is git-ignored (as is every `.env.*` except `.env.example`). Keep it at mode `0600`.
+- **Don't merge it into `.env`.** The server loads `.env` on your Mac too. `HOST=0.0.0.0` with `MCP_TRANSPORT=http` would expose the local server to your network, and `GOOGLE_TOKEN_PATH=/etc/secrets/…` would break `npm run auth`. The two files overlap only in the two Google client values. If you rotate the client secret, update `.env`, `.env.render` and Render.
 
 ### Secret file: the Google token
 
@@ -173,7 +203,8 @@ Check Render's current pricing page; the figures above are approximate. No persi
 | Situation | Action |
 |-----------|--------|
 | **Tools return `AUTH_REQUIRED`** (every 7 days while the app is in Testing, or after you revoke access) | On your Mac: `npm run auth`, then `pbcopy < ~/.config/gmail-gdocs-mcp/token.json`. In Render: *Environment → Secret Files → token.json → paste → Save*, then redeploy or restart. |
-| Bearer token leaked | Set a new `MCP_AUTH_TOKEN` in Render (it restarts), then update every client. |
+| Bearer token leaked | Set a new `MCP_AUTH_TOKEN` in Render (it restarts), update `.env.render`, then update every client. |
+| Client secret exposed | Google Cloud → *Credentials* → your OAuth client → reset the secret. Update `GOOGLE_CLIENT_SECRET` in `.env`, `.env.render` and Render. Re-run `npm run auth` and re-upload `token.json`. |
 | Suspected misuse | Suspend the service in Render, then revoke the app at <https://myaccount.google.com/permissions>, then re-run `npm run auth` and upload the new token before resuming. |
 | Bad deploy | Render dashboard → *Events* → roll back to the previous deploy. |
 | Debugging | Temporarily set `LOG_LEVEL=debug`; logs are JSON on stderr in Render's log view (secrets are still redacted). |
@@ -182,7 +213,9 @@ Check Render's current pricing page; the figures above are approximate. No persi
 
 ## 8. Security checklist
 
-- [ ] Private Git repository; `git status` showed no `.env` or `token.json` before the first commit
+- [x] Repository contains no secrets. It is **public**, so this matters: the full history was scanned on 2026-10-22 for the real client ID, client secret, bearer token and OAuth tokens, and none were found. `.env`, `.env.*` (except `.env.example`) and `token.json` are git-ignored.
+- [x] Commits use the GitHub noreply address, so no personal email appears in the public history
+- [ ] Before every push: `git status` shows no `.env*` or `token.json` files
 - [ ] `MCP_AUTH_TOKEN` is 64 random hex characters and stored only in Render and your password manager
 - [ ] `ALLOWED_RECIPIENT_DOMAINS` set; `RATE_LIMIT_EMAILS_PER_HOUR` lowered
 - [ ] Exactly one instance
@@ -209,4 +242,6 @@ Run locally on 2026-10-22 against a clean copy of the repo, simulating Render:
 | `ALLOWED_RECIPIENT_DOMAINS=gmail.com`, recipient `@example.org` | `POLICY_BLOCKED`, nothing sent |
 | Email and Docs dry runs against the real Google APIs | Pass |
 
-Not tested: Render itself (no account access from here), and cold-start behaviour of specific clients.
+| Git history and tracked files scanned for the real credential values and personal email | None found |
+
+Not tested yet: the live Render service (pending; see [Current status](#current-status-2026-10-22)), and cold-start behaviour of specific clients.

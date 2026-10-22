@@ -113,7 +113,7 @@ If the server starts without valid tokens, it still starts and lists its tools. 
 
 ## Configuration
 
-All configuration is through environment variables. A `.env` file in the working directory is also read; see [.env.example](.env.example). CLI flags (`--transport`, `--port`, `--host`) override the environment.
+All configuration is through environment variables. A `.env` file in the working directory is also read; see [.env.example](.env.example). `.env` and every other `.env.*` file except `.env.example` are git-ignored. For a Render deployment, keep its variables in a separate `.env.render`; see [DEPLOYMENT.md](DEPLOYMENT.md#entering-them-in-bulk-envrender). CLI flags (`--transport`, `--port`, `--host`) override the environment.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -184,7 +184,7 @@ Each vendor's connector UI and supported authentication options differ and chang
 
 Clients that take a URL plus headers can connect directly; see [examples/cursor-http.json](examples/cursor-http.json) and [examples/gemini-http-settings.json](examples/gemini-http-settings.json).
 
-**Render:** see [DEPLOYMENT.md](DEPLOYMENT.md) for a tested deployment plan.
+**Render:** see [DEPLOYMENT.md](DEPLOYMENT.md) for the tested deployment plan, current deployment status and runbook.
 
 **Docker** (HTTP mode): authorize once on a machine with a browser, then mount the token directory. See [examples/docker-run.sh](examples/docker-run.sh). On Linux, add `--user "$(id -u):$(id -g)"` so the container can read and refresh your `0600` token file.
 
@@ -283,7 +283,7 @@ Type-level schema violations, such as a number where a string is expected or a m
 - **Turn on tool-call confirmation** in your client for `gmail_send_email` (and ideally `gdocs_append_text`). Tool descriptions tell the model to act only on explicit requests, but a server cannot verify user intent. Prompt injection from web pages, documents or emails is a real risk.
 - **Set `ALLOWED_RECIPIENT_DOMAINS`** (and `ALLOWED_DOCUMENT_IDS` where practical) as hard backstops. Consider `REQUIRE_DRY_RUN_FIRST=true` for high-stakes accounts.
 - **HTTP mode:** always set a long random `MCP_AUTH_TOKEN`. Keep the default `HOST=127.0.0.1` and put TLS in front with a reverse proxy or tunnel. Never expose plain HTTP to the internet. The server validates `Origin` (and `Host` when unauthenticated or when `MCP_ALLOWED_HOSTS` is set) against DNS rebinding, limits request bodies to 15 MB, and never sends a wildcard CORS header.
-- **Protect the token file.** It grants send-as-you access. It is written `0600`; don't commit it, and keep `.env` out of version control.
+- **Protect the token file and env files.** `token.json` grants send-as-you access. It is written `0600`, and `.env*` and `token.json` are git-ignored. Don't paste them into chats, issues or screenshots. If a client secret or bearer token is ever exposed, rotate it (see the Runbook in [DEPLOYMENT.md](DEPLOYMENT.md#7-runbook)).
 - **Logs** at `info` record the tool name, outcome, latency, Google request IDs, recipient *domains* and document IDs, never addresses or content. `debug` adds more detail, with secrets still redacted.
 - Revoke access at any time at <https://myaccount.google.com/permissions>.
 
