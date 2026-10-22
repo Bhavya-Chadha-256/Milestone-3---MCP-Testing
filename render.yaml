@@ -1,0 +1,30 @@
+# Render Blueprint: see DEPLOYMENT.md. Secret values (marked sync: false) and the
+# token secret file are entered in the Render dashboard, never committed.
+services:
+  - type: web
+    name: gmail-gdocs-mcp
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: node dist/index.js
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: MCP_TRANSPORT
+        value: http
+      - key: HOST
+        value: 0.0.0.0
+      - key: GOOGLE_TOKEN_PATH
+        value: /etc/secrets/token.json
+      - key: MCP_AUTH_TOKEN
+        generateValue: true
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: ALLOWED_RECIPIENT_DOMAINS
+        sync: false
+      - key: RATE_LIMIT_EMAILS_PER_HOUR
+        value: "10"
+      - key: LOG_LEVEL
+        value: info

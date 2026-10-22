@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "gmail-gdocs": {
+      "command": "node",
+      "args": ["/absolute/path/to/gmail-gdocs-mcp/dist/index.js"],
+      "env": {
+        "GOOGLE_CLIENT_ID": "xxxxx.apps.googleusercontent.com",
+        "GOOGLE_CLIENT_SECRET": "xxxxx",
+        "ALLOWED_RECIPIENT_DOMAINS": "mycompany.com"
+      }
+    }
+  }
+}
